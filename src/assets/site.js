@@ -7,7 +7,7 @@
 
 // These variables are passed down from the server.
 
-const ephewvar = {"config":{"interinstance":{"iid":"example.com"}}}; // Default config's JSON, to allow editor type chekcking.
+const ephewvar = {"config":{"interinstance":{"iid":"example.com"}}}; // Default config's JSON, to allow editor type checking.
 
 // Start of actual site.js
 
