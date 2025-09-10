@@ -21,18 +21,12 @@ WORKDIR /build
 # Copy and install the mise.toml file first to leverage Docker cache
 COPY mise.toml ./mise.toml
 RUN mise trust && mise unuse bun && mise install
-# Now copy the rest of the project files
-COPY . .
-# Unuse bun again after copying the project files
-RUN mise unuse bun && \
-    mkdir -p target/output  && \
-    if [ "$optimize_build" = "true" ]; then \
-        mise run build-server-release && \
-        cp ./target/release/lumina-server ./target/output/; \
-    else \
-        mise run build-server && \
-        cp ./target/debug/lumina-server ./target/output/; \
-    fi
+# Copy the project files excluding mise.toml
+COPY --exclude=mise.toml . .
+# Build the project itself in release mode.
+RUN mkdir -p target/output  && \
+    mise run build-server-release && \
+    cp ./target/release/lumina-server ./target/output/;
 
 
 # --- Final runtime image ---
