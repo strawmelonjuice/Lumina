@@ -1,3 +1,6 @@
+//// Lumina > Client > Errors
+//// Error collection module
+
 //	Lumina/Peonies
 //	Copyright (C) 2018-2026 MLC 'Strawmelonjuice'  Bloeiman and contributors.
 //
@@ -13,8 +16,6 @@
 //
 //	You should have received a copy of the GNU Affero General Public License
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-//// Error collection module
 
 /// An error somewhere in the app.
 pub type Error {
