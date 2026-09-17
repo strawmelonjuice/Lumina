@@ -3,10 +3,28 @@
 ////
 //// Initialising and routing SPA for Lumina on the web.
 
+// Lumina/Peonies
+// Copyright (C) 2018-2026 MLC 'Strawmelonjuice' Bloeiman and contributors.
+//
+// This software is licensed under the European Union Public Licence (EUPL) v1.2.
+// You may not use this work except in compliance with the Licence.
+// You may obtain a copy of the Licence at: https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12
+//
+// AI TRAINING NOTICE: Rights for TDM and AI training are EXPRESSLY RESERVED
+// under Art 4(3) Dir 2019/790. AI training constitutes a Derivative Work.
+// See LICENCE file in the repository root for full details.
+//
+//
+// This software is provided "AS IS", WITHOUT WARRANTY OF ANY KIND.
+// See the Licence for the specific language governing permissions and limitations.
+
 // Imports ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+import gleam/bit_array
 import gleam/bool
+import gleam/dict.{type Dict}
 import gleam/dynamic/decode
+import gleam/javascript/promise
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -42,16 +60,38 @@ pub fn main() {
 
 // Model ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+type SignedMessageID
+
 type Model {
   Model(
     route: Route,
     user_authenticated: Option(MyUser),
     session_id: Option(String),
+    available_keypair: AvailableKeypair,
     signed_messages: Dict(
       SignedMessageID,
       lumina_messages.PoliteMessageSignedBits,
     ),
   )
+}
+
+type AvailableKeypair {
+  /// No key pair in model
+  NoKeyPair
+  /// A freshly generated keypair, usually created
+  /// when the signup component needs to be loaded.
+  Clean(KeypairED25519)
+  /// A keypair loaded from the browser's localstorage
+  /// you'd typically find these on browsers that have
+  /// previously signed up, or have renewed delegate keys
+  /// recently.
+  Stored(KeypairED25519)
+  /// Some users may bring their own keypair, allowing for forced migrations or key-reuse.
+  Forced(KeypairED25519)
+  /// Advanced users may only bring a public key, keeping their private master key not only on their
+  /// device but also outside of the browser. This is especially useful when signing delegate keys with for example
+  /// a YubiKey.
+  ForcedPubkey(BitArray)
 }
 
 pub type MyUser {
@@ -130,7 +170,14 @@ fn init(_) -> #(Model, Effect(Message)) {
     Error(_) -> Index
   }
 
-  let model = Model(route:, user_authenticated: None, session_id: None)
+  let model =
+    Model(
+      route:,
+      user_authenticated: None,
+      session_id: None,
+      available_keypair: NoKeyPair,
+      signed_messages: dict.new(),
+    )
   let initial_origin =
     modem.initial_uri()
     |> result.map(uri.origin)
@@ -138,6 +185,10 @@ fn init(_) -> #(Model, Effect(Message)) {
 
   let effect =
     effect.batch([
+      case route == Register {
+        True -> generate_kp_for_register(NoKeyPair)
+        False -> effect.none()
+      },
       modem.advanced(
         modem.Options(handle_internal_links: True, handle_external_links: True),
         fn(uri) {
@@ -236,13 +287,25 @@ type Message {
     session_id: String,
     session_revive_key: String,
   )
+  GeneratedKeypair(KeypairED25519)
 }
 
 fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
   case message {
     UserNavigatedBack(by:) -> #(model, modem.back(by))
+    GeneratedKeypair(kp) -> {
+      #(Model(..model, available_keypair: Clean(kp)), effect.none())
+    }
 
-    UserNavigatedTo(route:) -> #(Model(..model, route:), effect.none())
+    UserNavigatedTo(route:) -> {
+      case route {
+        Register -> #(
+          Model(..model, route:),
+          generate_kp_for_register(model.available_keypair),
+        )
+        _ -> #(Model(..model, route:), effect.none())
+      }
+    }
 
     AuthenticationCheckResponse(None) -> #(
       model,
@@ -290,6 +353,37 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       })
     }
   }
+}
+
+fn generate_kp_for_register(instead_of: AvailableKeypair) -> Effect(Message) {
+  use <- bool.guard(
+    case instead_of {
+      // We just generated a clean keypair! No need for another.
+      Clean(..) -> True
+      _ -> False
+    },
+    return: effect.none(),
+  )
+  effect.from(fn(dispatch) {
+    witness.this(
+      witness.Info,
+      "Generating new local ED25519 keypair for signup.",
+      [],
+    )
+    promise.await(lumina_webcrypto.generate_ed25519_keypair(), fn(kp) {
+      witness.this(
+        witness.Info,
+        "Local ED25519 keypair for signup successfully generated.",
+        [
+          witness.string("public key", bit_array.inspect(kp.public_key)),
+          witness.string("private key", bit_array.inspect(kp.private_key)),
+        ],
+      )
+      dispatch(GeneratedKeypair(kp))
+      promise.resolve(Nil)
+    })
+    Nil
+  })
 }
 
 // View ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -405,15 +499,20 @@ fn view(model: Model) -> Element(Message) {
           //TODO: Maybe make that "Sign up on <instance name>", sometime?
           html.h1([], [text("Sign up on this instance")]),
           keyed.div([], [
-            #(
-              "registercomponent",
-              server_component.element(
-                [
-                  server_component.route("/ws/web/register"),
-                ],
-                [],
-              ),
-            ),
+            #("registercomponent", case model.available_keypair {
+              Clean(lumina_webcrypto.KeypairED25519(public_key: _, private_key:)) ->
+                server_component.element(
+                  [
+                    server_component.route("/ws/web/register"),
+                    attribute.attribute(
+                      "with-pubkey",
+                      bit_array.base64_encode(private_key, True),
+                    ),
+                  ],
+                  [],
+                )
+              _ -> element.text("Wait.")
+            }),
           ]),
         ],
       )
