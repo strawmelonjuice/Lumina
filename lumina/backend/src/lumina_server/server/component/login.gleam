@@ -317,113 +317,145 @@ fn view(model: Model) -> element.Element(Message) {
             }
           },
           html.form([], [
-            html.fieldset([attribute.class("vstack")], [
-              html.div([attribute.data("field", "")], [
-                html.label([attribute.for("field-id")], [
-                  html.text(" Email or username "),
-                ]),
-                html.input([
-                  attribute.value(model.field_username.value),
-                  event.on_input(UserChangedInputUsername)
-                    |> server_component.include(["target.value"]),
-                  attribute.autocomplete("username"),
-                  attribute.placeholder("me@mymail.com"),
-                  attribute.id("field-id"),
-                  attribute.aria_describedby("field-id-status"),
-                  attribute.aria_invalid({
+            html.fieldset(
+              [attribute.class("vstack"), attribute.style("gap", "0")],
+              [
+                html.div(
+                  [
+                    attribute.styles([
+                      #("padding", "var(--space-2)"),
+                      #("margin-inline", "var(--space-4)"),
+                      #("border-radius", "var(--radius-small)"),
+                      #("border", "dashed 1px var(--muted-foreground)"),
+                    ]),
+                    attribute.data("field", ""),
+                  ],
+                  [
+                    html.label([attribute.for("field-id")], [
+                      html.text(" Email or username "),
+                    ]),
+                    html.input([
+                      attribute.value(model.field_username.value),
+                      event.on_input(UserChangedInputUsername)
+                        |> server_component.include(["target.value"]),
+                      attribute.autocomplete("username"),
+                      attribute.placeholder("me@mymail.com"),
+                      attribute.id("field-id"),
+                      attribute.aria_describedby("field-id-status"),
+                      attribute.aria_invalid({
+                        case model.field_username {
+                          ControlledInput(value: _, validity: _, initial: True)
+                          | ControlledInput(
+                              value: _,
+                              validity: Ok(Nil),
+                              initial: _,
+                            ) -> False
+                          ControlledInput(value: _, validity: _, initial: False) ->
+                            True
+                        }
+                        |> bool.to_string
+                        |> string.lowercase
+                      }),
+                      attribute.type_({
+                        case
+                          model.field_username.value |> string.contains("@")
+                        {
+                          True -> "email"
+                          False -> "text"
+                        }
+                      }),
+                    ]),
                     case model.field_username {
+                      ControlledInput(False, _, validity: Error(message)) -> {
+                        html.div(
+                          [
+                            attribute.role("status"),
+                            attribute.class("error"),
+                            attribute.id("field-id-status"),
+                          ],
+                          [element.text(message)],
+                        )
+                      }
                       ControlledInput(value: _, validity: _, initial: True)
                       | ControlledInput(value: _, validity: Ok(Nil), initial: _) ->
-                        False
-                      ControlledInput(value: _, validity: _, initial: False) ->
-                        True
-                    }
-                    |> bool.to_string
-                    |> string.lowercase
-                  }),
-                  attribute.type_({
-                    case model.field_username.value |> string.contains("@") {
-                      True -> "email"
-                      False -> "text"
-                    }
-                  }),
-                ]),
-                case model.field_username {
-                  ControlledInput(False, _, validity: Error(message)) -> {
-                    html.div(
-                      [
-                        attribute.role("status"),
-                        attribute.class("error"),
-                        attribute.id("field-id-status"),
-                      ],
-                      [element.text(message)],
-                    )
-                  }
-                  ControlledInput(value: _, validity: _, initial: True)
-                  | ControlledInput(value: _, validity: Ok(Nil), initial: _) ->
-                    html.div(
-                      [
-                        attribute.role("status"),
-                        attribute.class("hidden"),
-                        attribute.id("field-id-status"),
-                      ],
-                      [],
-                    )
-                },
-              ]),
-              html.label(
-                [attribute.aria_invalid("true"), attribute.data("field", "")],
-                [
-                  html.text(" Password "),
-                  html.input([
-                    attribute.value(model.field_password.value),
-                    event.on_input(UserChangedInputPassword)
-                      |> server_component.include(["target.value"]),
-                    attribute.placeholder("•••••••••••••••"),
-                    attribute.autocomplete("current-password"),
-                    attribute.aria_describedby("field-password-status"),
-                    attribute.id("field-password"),
-                    attribute.aria_invalid({
-                      case model.field_password {
-                        ControlledInput(value: _, validity: _, initial: True)
-                        | ControlledInput(
-                            value: _,
-                            validity: Ok(Nil),
-                            initial: _,
-                          ) -> False
-                        ControlledInput(value: _, validity: _, initial: False) ->
-                          True
+                        html.div(
+                          [
+                            attribute.role("status"),
+                            attribute.class("hidden"),
+                            attribute.id("field-id-status"),
+                          ],
+                          [],
+                        )
+                    },
+                  ],
+                ),
+                html.label(
+                  [
+                    attribute.aria_invalid("true"),
+                    attribute.styles([
+                      #("padding", "var(--space-2)"),
+                      #("margin-inline", "var(--space-4)"),
+                      #("border-radius", "var(--radius-small)"),
+                      #("border", "dashed 1px var(--muted-foreground)"),
+                    ]),
+                    attribute.data("field", ""),
+                  ],
+                  [
+                    html.text(" Password "),
+                    html.input([
+                      attribute.value(model.field_password.value),
+                      event.on_input(UserChangedInputPassword)
+                        |> server_component.include(["target.value"]),
+                      attribute.placeholder("•••••••••••••••"),
+                      attribute.autocomplete("current-password"),
+                      attribute.aria_describedby("field-password-status"),
+                      attribute.id("field-password"),
+                      attribute.aria_invalid({
+                        case model.field_password {
+                          ControlledInput(value: _, validity: _, initial: True)
+                          | ControlledInput(
+                              value: _,
+                              validity: Ok(Nil),
+                              initial: _,
+                            ) -> False
+                          ControlledInput(value: _, validity: _, initial: False) ->
+                            True
+                        }
+                        |> bool.to_string
+                        |> string.lowercase
+                      }),
+                      attribute.type_("password"),
+                    ]),
+                    case model.field_password {
+                      ControlledInput(_, _, initial: True)
+                      | ControlledInput(_, _, validity: Ok(Nil)) ->
+                        html.div(
+                          [
+                            attribute.role("status"),
+                            attribute.id("field-password-status"),
+                            attribute.class("hidden"),
+                          ],
+                          [],
+                        )
+                      ControlledInput(
+                        _,
+                        validity: Error(message),
+                        initial: False,
+                      ) -> {
+                        html.div(
+                          [
+                            attribute.role("status"),
+                            attribute.class("error"),
+                            attribute.id("field-password-status"),
+                          ],
+                          [element.text(message)],
+                        )
                       }
-                      |> bool.to_string
-                      |> string.lowercase
-                    }),
-                    attribute.type_("password"),
-                  ]),
-                  case model.field_password {
-                    ControlledInput(_, _, initial: True)
-                    | ControlledInput(_, _, validity: Ok(Nil)) ->
-                      html.div(
-                        [
-                          attribute.role("status"),
-                          attribute.id("field-password-status"),
-                          attribute.class("hidden"),
-                        ],
-                        [],
-                      )
-                    ControlledInput(_, validity: Error(message), initial: False) -> {
-                      html.div(
-                        [
-                          attribute.role("status"),
-                          attribute.class("error"),
-                          attribute.id("field-password-status"),
-                        ],
-                        [element.text(message)],
-                      )
-                    }
-                  },
-                ],
-              ),
-            ]),
+                    },
+                  ],
+                ),
+              ],
+            ),
           ]),
           html.div(
             [
