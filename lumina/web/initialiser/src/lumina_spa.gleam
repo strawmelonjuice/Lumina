@@ -12,6 +12,8 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import gleam/uri.{type Uri}
+import lumina_messages
+import lumina_webcrypto.{type KeypairED25519}
 import lustre
 import lustre/attribute.{type Attribute}
 import lustre/effect.{type Effect}
@@ -45,6 +47,10 @@ type Model {
     route: Route,
     user_authenticated: Option(MyUser),
     session_id: Option(String),
+    signed_messages: Dict(
+      SignedMessageID,
+      lumina_messages.PoliteMessageSignedBits,
+    ),
   )
 }
 
