@@ -309,7 +309,7 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
 
     AuthenticationCheckResponse(None) -> #(
       model,
-      wait_message(RetryAuthenticationCheck, 1200),
+      wait_message(RetryAuthenticationCheck, 30_000),
     )
     RetryAuthenticationCheck -> {
       #(model, {
@@ -440,7 +440,23 @@ fn view(model: Model) -> Element(Message) {
                     )
                   }),
                 ],
-                [],
+                [
+                  html.article([attribute.class("card")], [
+                    html.header([], [
+                      html.h3([], [html.text("Loading...")]),
+                      html.p([], [
+                        html.text("Connecting to the instance..."),
+                      ]),
+                    ]),
+                    paragraph(
+                      "Is this taking too long? Try again by reloading the page.",
+                    ),
+                    paragraph(
+                      "If this screen persists, maybe the instance is down. Try contacting the instance
+				  administrators.",
+                    ),
+                  ]),
+                ],
               ),
             ),
           ]),
@@ -509,9 +525,34 @@ fn view(model: Model) -> Element(Message) {
                       bit_array.base64_encode(private_key, True),
                     ),
                   ],
-                  [],
+                  [
+                    html.article([attribute.class("card")], [
+                      html.header([], [
+                        html.h3([], [html.text("Loading...")]),
+                        html.p([], [
+                          html.text("Connecting to the instance..."),
+                        ]),
+                      ]),
+                      paragraph(
+                        "Is this taking too long? Try again by reloading the page.",
+                      ),
+                      paragraph(
+                        "If this screen persists, maybe the instance is down. Try contacting the instance
+				  administrators.",
+                      ),
+                    ]),
+                  ],
                 )
-              _ -> element.text("Wait.")
+              _ ->
+                html.article([attribute.class("card")], [
+                  html.header([], [
+                    html.h3([], [html.text("Preparing...")]),
+                    paragraph("Pre-generating your secure identity"),
+                  ]),
+                  paragraph(
+                    "Is this taking too long? Try again by reloading the page.",
+                  ),
+                ])
             }),
           ]),
         ],
