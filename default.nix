@@ -4,15 +4,22 @@ let
     config = { };
     overlays = [ ];
   };
-  gleam = pkgs.rustPlatform.buildRustPackage rec {
+  # Gleam 1.19.2 requires a newer version of Rust.
+  nixpkgs-unstable = fetchTarball "https://github.com/NixOS/nixpkgs/tarball/nixos-unstable";
+  pkgs-unstable = import nixpkgs-unstable {
+    config = { };
+    overlays = [ ];
+  };
+  gleam = pkgs-unstable.rustPlatform.buildRustPackage rec {
     pname = "gleam";
-    version = "1.18.1";
+    version = "1.19.2";
 
     src = pkgs.fetchFromGitHub {
       owner = "gleam-lang";
       repo = "gleam";
-      rev = "19bf207ebb7d953ea1391f041da48c214ee1440a";
-      hash = "sha256-974B+22Lvd7KB9M0yuuxkolLtRmg42NrAX5CIrIc3Ac=";
+      rev = # Tagged
+          "v1.19.2";
+      hash = "sha256-L7M1/nGDiB4D+yX1cjQ7mqNQ7YuC1BctLXEvnNjPz7A=";
     };
 
     cargoLock = {
