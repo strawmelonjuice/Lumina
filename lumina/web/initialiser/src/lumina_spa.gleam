@@ -160,7 +160,7 @@ fn try_session_revive(key: String) -> Effect(Message) {
   effect.none()
 }
 
-@external(javascript, "./lumina_spa_ffi", "with_timeout")
+@external(javascript, "./lumina_spa_ffi.mjs", "with_timeout")
 fn set_timeout(_delay: Int, _cb: fn() -> a) -> Nil {
   Nil
 }
@@ -208,10 +208,10 @@ fn check_auth_status() {
   rsvp.get(url, handler)
 }
 
-@external(javascript, "./lumina_spa_ffi", "getSessionRevivekey")
+@external(javascript, "./lumina_spa_ffi.mjs", "getSessionRevivekey")
 fn get_session_revive_key() -> Result(String, Nil)
 
-@external(javascript, "./lumina_spa_ffi", "storeSessionRevivekey")
+@external(javascript, "./lumina_spa_ffi.mjs", "storeSessionRevivekey")
 fn store_session_revive_key(_: String) -> Nil
 
 // Update ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

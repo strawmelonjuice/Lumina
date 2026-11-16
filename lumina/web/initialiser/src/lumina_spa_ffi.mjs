@@ -1,4 +1,4 @@
-import { Result$Ok, Result$Error } from "./gleam";
+import { Result$Ok, Result$Error } from "./gleam.mjs";
 
 // localStorage helpers
 export function getSessionRevivekey() {
