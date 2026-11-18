@@ -1,4 +1,4 @@
-import { BitArray$BitArray } from "./gleam";
+import { BitArray$BitArray } from "./gleam.mjs";
 
 export async function generate_ed25519_keypair() {
 	const keyPair = await window.crypto.subtle.generateKey(
