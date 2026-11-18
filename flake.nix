@@ -89,7 +89,7 @@
 
           outputHashMode = "recursive";
           outputHashAlgo = "sha256";
-          outputHash = "sha256-glYmf6WPyyWCoNWQElRlXosODP9ez3AtHuIjWlMJ3M0=";
+          outputHash = "sha256-w7otseJoE9UoEtSUFSKIxc9a8ATekC2/U4+aPNTfZqA=";
         };
 
       };
