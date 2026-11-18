@@ -38,7 +38,6 @@ gleam_time = ">= 1.8.0 and < 2.0.0"
 ewe = ">= 6.0.0 and < 7.0.0"
 envoy = ">= 1.2.0 and < 2.0.0"
 witness = { git = "https://tangled.org/ollie.earth/witness", ref = "90575485724eabc960b43a856cd43e3ba7bd8389" }
-logging = ">= 1.5.0 and < 2.0.0"
 iv = ">= 1.4.4 and < 2.0.0"
 mala = ">= 1.2.0 and < 2.0.0"
 rasa = ">= 2.0.1 and < 3.0.0"

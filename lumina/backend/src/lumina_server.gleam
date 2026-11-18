@@ -27,7 +27,6 @@ import gleam/otp/actor
 import gleam/otp/static_supervisor as supervisor
 import gleam/result
 import group_registry
-import logging
 import lumina_server/config
 import lumina_server/data
 import lumina_server/server
@@ -54,32 +53,9 @@ pub fn start(
   _app: atom.Atom,
   _type: a,
 ) -> Result(process.Pid, actor.StartError) {
-  witness.set_process_fields([witness.string("process", "Initial OTP Starter")])
-  case start_supervisor() {
-    Ok(actor.Started(pid, _data)) -> {
-      let sup_name = process.new_name("Lumina Supervisor")
-      let _ = process.register(pid, sup_name)
-      witness.this(witness.Info, "Started Lumina server!", [])
-      Ok(pid)
-    }
-    Error(reason) -> Error(reason)
-  }
-}
-
-/// This callback is ran by the OTP runtime when Lumina is fully closing down.
-pub fn stop(_state: a) -> atom.Atom {
-  atom.create("ok")
-}
-
-pub fn start_supervisor() -> Result(
-  actor.Started(supervisor.Supervisor),
-  actor.StartError,
-) {
-  logging.configure()
-
-  let assert Ok(_) =
-    process.register(process.self(), process.new_name("Lumina Starter"))
-
+  witness.new("Lumina Server")
+  |> witness.with_console(witness.Info, witness.Text)
+  |> witness.configure
   witness.new("Lumina Server")
   |> case config.application_debug() {
     True -> fn(c) {
@@ -105,6 +81,29 @@ pub fn start_supervisor() -> Result(
     file: data.log_file("default"),
   )
   |> witness.configure
+  witness.set_process_fields([witness.string("process", "Initial OTP Starter")])
+  case start_supervisor() {
+    Ok(actor.Started(pid, _data)) -> {
+      let sup_name = process.new_name("Lumina Supervisor")
+      let _ = process.register(pid, sup_name)
+      witness.this(witness.Info, "Started Lumina server!", [])
+      Ok(pid)
+    }
+    Error(reason) -> Error(reason)
+  }
+}
+
+/// This callback is ran by the OTP runtime when Lumina is fully closing down.
+pub fn stop(_state: a) -> atom.Atom {
+  atom.create("ok")
+}
+
+pub fn start_supervisor() -> Result(
+  actor.Started(supervisor.Supervisor),
+  actor.StartError,
+) {
+  let assert Ok(_) =
+    process.register(process.self(), process.new_name("Lumina Starter"))
 
   let db_pool = process.new_name("Databasepool")
   let datamgr = process.new_name("Data management actor")
