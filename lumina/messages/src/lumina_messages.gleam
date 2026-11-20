@@ -23,6 +23,7 @@ import gleam/bit_array
 import gleam/list
 import gleam/pair
 import gleam/result
+import gleam/string
 
 // Message carrier types ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 /// A signed messages' bits, the message within is decodable, but it's signature must still be verified before executing
@@ -50,11 +51,15 @@ pub type PoliteMessageVerified {
 ///
 /// Normally a message signed with a delegated key is packaged with it's `Appoint`, so that a receiving
 /// instance immediately knows this message was authored.
-/// A privileged message_ is a message only to be signed with the master key.
+/// A _privileged message_ is a message only to be signed with the master key.
+///
+/// Most message types are user messages, but infrastructural messages also exist. An _infrastructural message_ has an
+/// instance as it's actor. The instance signs these message with it's own keypair, of which the public key is available
+/// on `/_lumina/lookup/instance/key`. To accomodate this, all infrastructural messages carry their origin as first field.
 pub type PoliteMessage {
   /// Grants a certain key a certain scope of rights.
   ///
-  /// _This is a privileged message._
+  /// _This is a privileged user message._
   Appoint(
     pubkey: BitArray,
     scope: SubkeyScope,
@@ -67,22 +72,47 @@ pub type PoliteMessage {
   /// successfully defederated) 'deletes' an account, it's did should
   /// never be used again.
   ///
-  /// _This is a privileged message._
+  /// _This is a privileged user message._
   Dissolve
 
   /// Announces the actor, this places them on an instance, makes them
   /// easier to lookup, and visible over gossip. This is also served from
-  /// the `/_lumina/who/<did>` endpoint, along with all the `Appoint`s
+  /// the `/_lumina/lookup/user/who/<did>` endpoint, along with all the `Appoint`s
+  ///
+  /// New AnnounceMe messages are made when for example a user changes their instance, or set a new displayname.
+  ///
+  /// _This is a user message_
   AnnounceMe(
-    /// Instance this actor lives on.
-    instance: String,
+    /// Instance name (domain name) this actor lives on.
+    instance: InstanceName,
     /// Username for this actor.
-    alias: String,
-    /// Displayname for this actor.
+    alias: UserAlias,
+    /// Displayname for this actor, limited to 400 grapheme clusters.
     displayname: String,
     /// Moment of creation of this AnnounceMe message, not when this actor was created.
     creation: Int,
   )
+
+  /// A looking message is added to the instance portfolio when the instance is missing a resource.
+  ///
+  /// _This is an infrastructural message_
+  Looking(origin: InstanceName, subtype: Looking)
+  /// A got message can be posted into `/_lumina/posted/messages` and posted onto the gossip portfolio.
+  /// If the requested resource is a message, the message will be posted directly, and no Got message needs be created.
+  ///
+  /// _This is an infrastructural message_
+  Got(origin: InstanceName, for: Looking)
+}
+
+/// A looking message is added to the instance portfolio when the instance is missing a resource.
+/// Any instance getting a Looking message has two options:
+/// - They don't have the resource, and instead forward the message into their gossip portfolio, adding their own as well.
+/// - They have it! And send either a `Got` message back to the origin (or in case of in-band requested resources, post
+/// 	 the message itself) and onto their gossip portfolio.
+pub type Looking {
+  /// `LookingMedia` specifically searches for a media file, media files are never send over the wire, that wouldn't be
+  /// polite. Instead they are content-addressed by a SHA-256 hash. The got message for this message
+  LookingMedia(media: BitArray, mime: String)
 }
 
 /// Scopes to which a subkey can have access.
@@ -113,6 +143,21 @@ pub type Error {
   UnalignedBadge
   /// Tried unpacking a package or badge of packages that did not meet expected shape.
   MalformedPackage
+  /// An instance name must be a valid domain name, constructing an instance name from a string may fail if this string
+  /// exceeds 254 grapheme clusters.
+  InstanceNameTooLong
+  /// Instance name may not be empty.
+  InstanceNameEmpty
+  /// Instance name must have a valid domain name format.
+  InvalidDomainFormat
+  /// Instance name must have valid domain name label length
+  InvalidLabelLength
+  /// Input contained invalid characters.
+  InvalidCharacters
+  /// User alias (username) is 25 characters or longer.
+  UserAliasTooLong
+  UserAliasContainsInvalidCharacters
+  DisplayNameTooLong
 }
 
 // Functions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -220,17 +265,28 @@ pub fn from_bits(payload: BitArray) -> Result(PoliteMessage, Error) {
       instance:bytes-size(instance_len),
       alias_len:16,
       alias:bytes-size(alias_len),
-      displayname_len:32,
+      displayname_len:16,
       displayname:bytes-size(displayname_len),
       creation:64,
     >> -> {
       {
-        use instance <- result.try(bit_array.to_string(instance))
-        use alias <- result.try(bit_array.to_string(alias))
-        use displayname <- result.try(bit_array.to_string(displayname))
+        use instance <- result.try(
+          bit_array.to_string(instance)
+          |> result.replace_error(InvalidMessage)
+          |> result.try(string_to_instance_name),
+        )
+        use alias <- result.try(
+          bit_array.to_string(alias)
+          |> result.replace_error(InvalidMessage)
+          |> result.try(string_to_user_alias),
+        )
+        use displayname <- result.try(
+          bit_array.to_string(displayname)
+          |> result.replace_error(InvalidMessage),
+        )
+
         Ok(AnnounceMe(instance:, alias:, displayname:, creation:))
       }
-      |> result.replace_error(InvalidMessage)
     }
 
     <<tag:16, _rest:bits>> -> {
@@ -265,23 +321,29 @@ pub fn to_bits(message message: PoliteMessage) -> Result(BitArray, Error) {
     }
     Dissolve -> Ok(<<0x00, 0x02>>)
     AnnounceMe(instance:, alias:, displayname:, creation:) -> {
-      let instance = <<instance:utf8>>
-      let alias = <<alias:utf8>>
-      let displayname = <<displayname:utf8>>
-
-      <<
-        0x00,
-        0x03,
-        bit_array.byte_size(instance):16,
-        instance:bits,
-        bit_array.byte_size(alias):16,
-        alias:bits,
-        bit_array.byte_size(displayname):16,
-        displayname:bits,
-        creation:64,
-      >>
-      |> Ok
+      case displayname |> string.length() <= 400 {
+        True -> {
+          let instance = <<instance.name:utf8>>
+          let alias = <<alias.username:utf8>>
+          let displayname = <<displayname:utf8>>
+          <<
+            0x00,
+            0x03,
+            bit_array.byte_size(instance):16,
+            instance:bits,
+            bit_array.byte_size(alias):16,
+            alias:bits,
+            bit_array.byte_size(displayname):16,
+            displayname:bits,
+            creation:64,
+          >>
+          |> Ok
+        }
+        False -> Error(DisplayNameTooLong)
+      }
     }
+    Looking(..) | Got(..) ->
+      todo as "Not yet implemented: infrastructural message encoding/decoding."
   }
 }
 
@@ -293,7 +355,7 @@ pub fn is_privileged(message msg: PoliteMessage) -> Bool {
   case msg {
     Appoint(..) | Dissolve -> True
     // We do not use a _ here, we want to be explicit.
-    AnnounceMe(..) -> False
+    AnnounceMe(..) | Looking(..) | Got(..) -> False
   }
 }
 
@@ -333,4 +395,129 @@ pub fn filter_privileged_bits(
       Error(m) -> Error(m)
     }
   })
+}
+
+// Internal helpers ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+fn validate_domain_name_label(label: String) -> Result(Nil, Error) {
+  let size = string.byte_size(label)
+  case
+    { size >= 1 && size <= 63 },
+    { string.starts_with(label, "-") || string.ends_with(label, "-") },
+    { is_alphanumeric_or_hyphen(string.to_graphemes(label)) }
+  {
+    False, _, _ -> Error(InvalidLabelLength)
+    True, True, _ -> Error(InvalidCharacters)
+    True, False, True -> Ok(Nil)
+    True, False, False -> Error(InvalidCharacters)
+  }
+}
+
+fn validate_tld(labels: List(String)) -> Result(Nil, Error) {
+  case list.last(labels) {
+    Ok(tld) -> {
+      case
+        string.to_graphemes(tld)
+        |> list.all(is_digit)
+      {
+        True -> Error(InvalidDomainFormat)
+        False -> Ok(Nil)
+      }
+    }
+    Error(_) -> Error(InvalidDomainFormat)
+  }
+}
+
+fn is_alphanumeric_or_hyphen(chars: List(String)) -> Bool {
+  list.all(chars, fn(c) { is_lower_alpha(c) || is_digit(c) || c == "-" })
+}
+
+fn is_lower_alpha(c: String) -> Bool {
+  case c {
+    "a"
+    | "b"
+    | "c"
+    | "d"
+    | "e"
+    | "f"
+    | "g"
+    | "h"
+    | "i"
+    | "j"
+    | "k"
+    | "l"
+    | "m"
+    | "n"
+    | "o"
+    | "p"
+    | "q"
+    | "r"
+    | "s"
+    | "t"
+    | "u"
+    | "v"
+    | "w"
+    | "x"
+    | "y"
+    | "z" -> True
+    _ -> False
+  }
+}
+
+fn is_digit(c: String) -> Bool {
+  case c {
+    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" -> True
+    _ -> False
+  }
+}
+
+// Opaque types ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+pub opaque type InstanceName {
+  InstanceName(name: String)
+}
+
+pub fn string_to_instance_name(str: String) -> Result(InstanceName, Error) {
+  case string.lowercase(str) |> string.remove_suffix(".") {
+    "" -> Error(InstanceNameEmpty)
+    domain ->
+      case string.byte_size(domain) <= 253 {
+        False -> Error(InstanceNameTooLong)
+        True -> {
+          let labels = string.split(domain, ".")
+          case list.length(labels) >= 2 {
+            False -> Error(InvalidDomainFormat)
+            True -> {
+              use _ <- result.try(list.try_each(
+                labels,
+                validate_domain_name_label,
+              ))
+              use _ <- result.try(validate_tld(labels))
+              Ok(InstanceName(domain))
+            }
+          }
+        }
+      }
+  }
+}
+
+pub fn instance_name(s: InstanceName) -> String {
+  s.name
+}
+
+pub opaque type UserAlias {
+  UserAlias(username: String)
+}
+
+pub fn string_to_user_alias(v) {
+  case
+    is_alphanumeric_or_hyphen(string.to_graphemes(v)),
+    string.length(v) <= 25
+  {
+    True, True -> Ok(UserAlias(v))
+    False, _ -> Error(UserAliasContainsInvalidCharacters)
+    _, False -> Error(UserAliasTooLong)
+  }
+}
+
+pub fn user_alias(s: UserAlias) {
+  s.username
 }
